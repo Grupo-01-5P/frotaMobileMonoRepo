@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id       Int       @id @default(autoincrement())
+  nome     String
+  email    String    @unique
+  login    String    @unique
+  senha    String
+  funcao   String     // 'supervisor' ou 'analista'
+  ativo    Boolean   @default(true)
+  veiculos Veiculo[]  @relation("UsuarioVeiculos")
+  manutencoes Manutencao[] @relation("UsuarioManutencoes")
+  inoperantesResponsavel Inoperante[] @relation("InoperanteResponsavel")
+}
+
+model Veiculo {
+  id              Int        @id @default(autoincrement())
+  placa           String     @unique
+  marca           String
+  modelo          String
+  anoFabricacao   Int
+  anoModelo       Int
+  cor             String
+  renavam         String
+  chassi          String
+  empresa         String
+  departamento    String
+  tipoVeiculo     String
+  supervisorId    Int?
+  supervisor      Usuario?    @relation("UsuarioVeiculos", fields: [supervisorId], references: [id])
+  manutencoes     Manutencao[]
+  inoperantes Inoperante[] @relation("InoperanteVeiculo")
+}
+
+model Oficina {
+  id           Int           @id @default(autoincrement())
+  nome         String
+  cnpj         String
+  rua          String
+  bairro       String
+  cidade       String
+  estado       String
+  email        String
+  telefone     String
+  recebeEmail  Boolean
+  orcamentos   Orcamento[]
+  manutencoes  Manutencao[]  // Nova relação: uma oficina pode ter várias manutenções
+  inoperantes Inoperante[] @relation("InoperanteOficina")
+}
+
+model Manutencao {
+  id                Int        @id @default(autoincrement())
+  veiculoId         Int
+  veiculo           Veiculo    @relation(fields: [veiculoId], references: [id])
+  descricaoProblema String
+  latitude          Float?     // Novo campo para a latitude
+  longitude         Float?     // Novo campo para a longitude
+  urgencia          String
+  status            String     @default("pendente")
+  dataSolicitacao   DateTime   @default(now())
+  dataAprovacao     DateTime?
+  dataReprovacao    DateTime?
+  dataEnviarMecanica DateTime?
+  motivoReprovacao  String?
+  supervisorId        Int
+  supervisor          Usuario    @relation("UsuarioManutencoes", fields: [supervisorId], references: [id])
+  oficinaId         Int?       // Campo opcional para relacionar com uma oficina
+  oficina           Oficina?   @relation(fields: [oficinaId], references: [id]) // Relação opcional com Oficina
+  orcamento         Orcamento?
+  entrega           Entrega?
+}
+
+model Orcamento {
+  id                Int                @id @default(autoincrement())
+  manutencaoId      Int                @unique
+  manutencao        Manutencao         @relation(fields: [manutencaoId], references: [id])
+  oficinaId         Int
+  oficina           Oficina            @relation(fields: [oficinaId], references: [id])
+  descricaoServico  String
+  valorMaoObra      Float
+  status            String             @default("pendente")
+  dataEnvio         DateTime           @default(now())
+  produtos          ProdutoOrcamento[]
+}
+
+model Produto {
+  id           Int                @id @default(autoincrement())
+  nome         String
+  descricao    String
+  precoMedio   Float
+  orcamentos   ProdutoOrcamento[]
+}
+
+model ProdutoOrcamento {
+  id           Int        @id @default(autoincrement())
+  orcamentoId  Int
+  produtoId    Int
+  valorUnitario Float
+  fornecedor   String
+
+  orcamento   Orcamento @relation(fields: [orcamentoId], references: [id])
+  produto     Produto   @relation(fields: [produtoId], references: [id])
+}
+
+model Entrega {
+  id             Int        @id @default(autoincrement())
+  manutencaoId   Int        @unique
+  manutencao     Manutencao @relation(fields: [manutencaoId], references: [id])
+  dataEntrega    DateTime
+  dataColeta     DateTime
+  odometro       Int
+  notaFiscal     String
+}
+
+enum FaseInoperante {
+  FASE1  // Iniciar viagem até a mecânica
+  FASE2  // Deixar veículo para manutenção
+  FASE3  // Serviço finalizado
+  FASE4  // Retorno com veículo
+}
+
+model Inoperante {
+  id             Int      @id @default(autoincrement())
+  veiculoId      Int
+  veiculo        Veiculo  @relation("InoperanteVeiculo", fields: [veiculoId], references: [id])
+  oficinaId      Int
+  oficina        Oficina  @relation("InoperanteOficina", fields: [oficinaId], references: [id])
+  responsavelId  Int
+  responsavel    Usuario  @relation("InoperanteResponsavel", fields: [responsavelId], references: [id])
+  faseAtual      FaseInoperante @default(FASE1)
+  updatedAt      DateTime @updatedAt
+}
