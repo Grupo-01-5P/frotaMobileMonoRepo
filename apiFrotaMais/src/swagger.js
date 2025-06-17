@@ -8,7 +8,7 @@ const doc = {
   },
   servers: [
     {
-      url: "http://localhost:4040",
+      url: "http://192.168.25.234:4040",
     }
   ],
   components: {

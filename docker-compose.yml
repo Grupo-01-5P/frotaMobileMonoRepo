@@ -46,11 +46,11 @@ services:
     restart: unless-stopped
 
   # Sua API
-  api-frotamais:
+  api-frotamaismobile:
     build:
       context: ./apiFrotaMais
       dockerfile: Dockerfile
-    container_name: api-frotamais
+    container_name: api-frotamaismobile
     ports:
       - "4040:4040"
     environment:
