@@ -318,26 +318,192 @@ export const remove = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id);
 
-    // A transação garante que ambas as operações (ou nenhuma) sejam concluídas.
-    // O Prisma geralmente lida com a ordem de exclusão de dependências,
-    // mas a exclusão explícita de ProdutoOrcamento é mais segura.
+    // Buscar o orçamento para verificar se existe e obter dados necessários
+    const orcamento = await prisma.orcamento.findUnique({
+      where: { id },
+    });
+
+    if (!orcamento) {
+      return res.status(404).json({ error: "Orçamento não encontrado." });
+    }
+
+    console.log("Removendo orçamento:", orcamento);
+
+    // Executar todas as operações em uma única transação
     await prisma.$transaction(async (tx) => {
       // 1. Deletar os ProdutoOrcamento associados
       await tx.produtoOrcamento.deleteMany({
         where: { orcamentoId: id },
       });
-      // 2. Deletar o Orcamento
-      // Se o orçamento não existir, o Prisma lançará um erro P2025.
+
+      // 2. Deletar o orçamento
       await tx.orcamento.delete({
         where: { id },
       });
+
+      // 3. ✅ CORREÇÃO: Voltar status da manutenção para "pendente" se existir
+      if (orcamento.manutencaoId) {
+        await tx.manutencao.update({
+          where: { id: orcamento.manutencaoId },
+          data: { status: "aprovada" }
+        });
+      }
     });
 
-    return res.no_content();
+    return res.status(204).send(); // ou res.no_content() se você tem esse método customizado
   } catch (error) {
-    if (error.code === 'P2025') { // "Record to delete not found"
+    if (error.code === 'P2025') { 
+      // "Record to delete not found" - pode acontecer se o orçamento for deletado entre a verificação e a deleção
       return res.status(404).json({ error: "Orçamento não encontrado." });
     }
+    
+    console.error("Erro ao remover orçamento:", error);
     return next(error); // Outros erros são passados para o manipulador de erros global
+  }
+};
+
+export const addProductToOrcamento = async (req, res, next) => {
+  /*
+    #swagger.tags = ["Orçamentos"]
+    #swagger.summary = "Adiciona um produto a um orçamento existente"
+    #swagger.security = [{ "BearerAuth": [] }]
+    #swagger.parameters['orcamentoId'] = {
+      in: 'path',
+      description: 'ID do Orçamento',
+      required: true,
+      type: 'integer'
+    }
+    #swagger.requestBody = {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            properties: {
+              produtoId: { type: "integer" },
+              valorUnitario: { type: "number" },
+              fornecedor: { type: "string" }
+            },
+            required: ["produtoId", "valorUnitario", "fornecedor"]
+          }
+        }
+      }
+    }
+    #swagger.responses[201] = { description: "Produto adicionado com sucesso" }
+    #swagger.responses[404] = { description: "Orçamento ou Produto não encontrado" }
+    #swagger.responses[409] = { description: "Este produto já existe no orçamento" }
+  */
+  try {
+    const orcamentoId = parseInt(req.params.orcamentoId);
+    const { produtoId, valorUnitario, fornecedor } = req.body;
+
+    // Usar transação para garantir a integridade dos dados
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Verificar se o orçamento e o produto existem
+      const orcamento = await tx.orcamento.findUnique({ where: { id: orcamentoId } });
+      if (!orcamento) {
+        // Lançar um erro customizado para ser capturado no catch do transaction
+        throw new Error('ORCAMENTO_NOT_FOUND');
+      }
+
+      const produto = await tx.produto.findUnique({ where: { id: produtoId } });
+      if (!produto) {
+        throw new Error('PRODUTO_NOT_FOUND');
+      }
+      
+      // 2. Verificar se a combinação produto-orçamento já existe
+      const existingEntry = await tx.produtoOrcamento.findFirst({
+        where: {
+          orcamentoId: orcamentoId,
+          produtoId: produtoId,
+        },
+      });
+
+      if (existingEntry) {
+        throw new Error('PRODUCT_ALREADY_IN_ORCAMENTO');
+      }
+
+      // 3. Criar a nova entrada em ProdutoOrcamento
+      const newProdutoOrcamento = await tx.produtoOrcamento.create({
+        data: {
+          orcamentoId,
+          produtoId,
+          valorUnitario,
+          fornecedor,
+        },
+        include: {
+            produto: true // Incluir dados do produto na resposta
+        }
+      });
+
+      return newProdutoOrcamento;
+    });
+
+    return res.status(201).json(result);
+  } catch (error) {
+    if (error.message === 'ORCAMENTO_NOT_FOUND') {
+      return res.status(404).json({ error: "Orçamento não encontrado." });
+    }
+    if (error.message === 'PRODUTO_NOT_FOUND') {
+      return res.status(404).json({ error: "Produto não encontrado." });
+    }
+    if (error.message === 'PRODUCT_ALREADY_IN_ORCAMENTO') {
+        return res.status(409).json({ error: "Este produto já consta no orçamento." });
+    }
+    return next(error);
+  }
+};
+
+export const removeProductFromOrcamento = async (req, res, next) => {
+  /*
+    #swagger.tags = ["Orçamentos"]
+    #swagger.summary = "Remove um produto de um orçamento"
+    #swagger.security = [{ "BearerAuth": [] }]
+    #swagger.parameters['orcamentoId'] = {
+      in: 'path',
+      description: 'ID do Orçamento',
+      required: true,
+      type: 'integer'
+    }
+    #swagger.parameters['produtoId'] = {
+      in: 'path',
+      description: 'ID do Produto a ser removido',
+      required: true,
+      type: 'integer'
+    }
+    #swagger.responses[204] = { description: "Produto removido com sucesso" }
+    #swagger.responses[404] = { description: "Associação Produto-Orçamento não encontrada" }
+  */
+  try {
+    const orcamentoId = parseInt(req.params.orcamentoId);
+    const produtoId = parseInt(req.params.produtoId);
+
+    // Para deletar, precisamos do ID da tabela ProdutoOrcamento.
+    // Primeiro, encontramos a entrada específica.
+    const produtoOrcamentoEntry = await prisma.produtoOrcamento.findFirst({
+        where: {
+            orcamentoId: orcamentoId,
+            produtoId: produtoId
+        }
+    });
+
+    if (!produtoOrcamentoEntry) {
+        return res.status(404).json({ error: "Produto não encontrado neste orçamento." });
+    }
+
+    // Agora deletamos usando o ID único da entrada.
+    await prisma.produtoOrcamento.delete({
+        where: {
+            id: produtoOrcamentoEntry.id
+        }
+    });
+
+    return res.no_content(); // Retorna 204 No Content
+  } catch (error) {
+    // Tratamento de erro caso o ID não seja um número válido, por exemplo.
+    if (error instanceof TypeError || error instanceof ReferenceError) {
+        return res.status(400).json({ error: "Parâmetros inválidos." });
+    }
+    return next(error);
   }
 };

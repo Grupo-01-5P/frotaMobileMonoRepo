@@ -12,7 +12,7 @@ import BudgetRouter from "./routers/budget/budgetRouter.js"
 import MaintenanceRouter from "./routers/maintenance/maintenanceRouter.js"
 import GarageRouter from "./routers/garage/garageRouter.js"
 import VehicleRouter from "./routers/vehicle/vehicleRouter.js"
-import InoperativeRouter from "./routers/inoperative/inoperativeRouter.js"
+import phasesRouter from "./routers/phases/phasesRouter.js"
 import ProductRouter from "./routers/products/productsRouter.js"
 
 import { verify } from "./controllers/authController.js"
@@ -23,12 +23,12 @@ routes.use(handler);
 
 routes.use("/login", AuthRouter)
 
-routes.use("/orcamento", verify, BudgetRouter)
+routes.use("/api/budgets", verify, BudgetRouter)
 routes.use("/api/users", verify, UserRouter)
 routes.use("/api/maintenance", verify, MaintenanceRouter)
 routes.use("/api/garage", verify, GarageRouter)
 routes.use("/api/veiculos", verify, VehicleRouter);
-routes.use("/inoperative", InoperativeRouter)
+routes.use("/api/phases", phasesRouter)
 routes.use("/api/products/search", ProductRouter) // Rota pública para busca
 routes.use("/api/products", verify, ProductRouter) // Rotas protegidas
 

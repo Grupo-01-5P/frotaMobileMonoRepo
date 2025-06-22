@@ -12,5 +12,7 @@ router.get("/:id", controller.getById);
 router.post("/", validator(budgetValidator), controller.create);
 router.put("/:id", controller.update);
 router.delete("/:id", controller.remove);
+router.post("/:orcamentoId/produtos", controller.addProductToOrcamento);
+router.delete("/:orcamentoId/produtos/:produtoId", controller.removeProductFromOrcamento);
 
 export default router;

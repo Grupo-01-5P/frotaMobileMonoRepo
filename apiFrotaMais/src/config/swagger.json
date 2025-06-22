@@ -65,7 +65,7 @@
         }
       }
     },
-    "/orcamento/": {
+    "/api/budgets/": {
       "get": {
         "tags": [
           "Orçamentos"
@@ -186,7 +186,7 @@
         "requestBody": {}
       }
     },
-    "/orcamento/{id}": {
+    "/api/budgets/{id}": {
       "get": {
         "tags": [
           "Orçamentos"
@@ -411,6 +411,169 @@
           },
           "404": {
             "description": "Orçamento não encontrado"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/budgets/{orcamentoId}/produtos": {
+      "post": {
+        "tags": [
+          "Orçamentos"
+        ],
+        "summary": "Adiciona um produto a um orçamento existente",
+        "description": "",
+        "parameters": [
+          {
+            "name": "orcamentoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID do Orçamento"
+          },
+          {
+            "name": "_page",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_order",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Produto adicionado com sucesso"
+          },
+          "404": {
+            "description": "Orçamento ou Produto não encontrado"
+          },
+          "409": {
+            "description": "Este produto já existe no orçamento"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "produtoId": {
+                    "type": "integer"
+                  },
+                  "valorUnitario": {
+                    "type": "number"
+                  },
+                  "fornecedor": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "produtoId",
+                  "valorUnitario",
+                  "fornecedor"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/budgets/{orcamentoId}/produtos/{produtoId}": {
+      "delete": {
+        "tags": [
+          "Orçamentos"
+        ],
+        "summary": "Remove um produto de um orçamento",
+        "description": "",
+        "parameters": [
+          {
+            "name": "orcamentoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID do Orçamento"
+          },
+          {
+            "name": "produtoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID do Produto a ser removido"
+          },
+          {
+            "name": "_page",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_order",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Produto removido com sucesso"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "404": {
+            "description": "Associação Produto-Orçamento não encontrada"
           }
         },
         "security": [
@@ -1667,7 +1830,7 @@
         "tags": [
           "Veiculos"
         ],
-        "summary": "List all vehicles",
+        "summary": "List all vehicles with maintenance status",
         "description": "",
         "parameters": [
           {
@@ -1715,11 +1878,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by maintenance status (em_manutencao or em_frota)",
+            "required": false,
+            "enum": [
+              "em_manutencao",
+              "em_frota"
+            ],
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "List of vehicles with pagination",
+            "description": "List of vehicles with maintenance status and pagination",
             "content": {
               "application/json": {
                 "schema": {
@@ -1757,6 +1933,54 @@
                           "cor": {
                             "type": "string",
                             "example": "Prata"
+                          },
+                          "statusManutencao": {
+                            "type": "string",
+                            "example": "Em frota",
+                            "enum": [
+                              "Em manutenção",
+                              "Em frota"
+                            ]
+                          },
+                          "manutencaoAtiva": {
+                            "type": "object",
+                            "nullable": true,
+                            "properties": {
+                              "id": {
+                                "type": "integer",
+                                "example": 15
+                              },
+                              "status": {
+                                "type": "string",
+                                "example": "aprovada"
+                              },
+                              "dataSolicitacao": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "descricaoProblema": {
+                                "type": "string",
+                                "example": "Problema no motor"
+                              },
+                              "faseAtual": {
+                                "type": "object",
+                                "nullable": true,
+                                "properties": {
+                                  "tipoFase": {
+                                    "type": "string",
+                                    "example": "SERVICO_FINALIZADO"
+                                  },
+                                  "descricaoFase": {
+                                    "type": "string",
+                                    "example": "Serviço finalizado"
+                                  },
+                                  "emAndamento": {
+                                    "type": "boolean",
+                                    "example": true
+                                  }
+                                }
+                              }
+                            }
                           },
                           "supervisor": {
                             "type": "object",
@@ -1804,6 +2028,19 @@
                         "hasPrevPage": {
                           "type": "boolean",
                           "example": false
+                        },
+                        "statusCount": {
+                          "type": "object",
+                          "properties": {
+                            "emManutencao": {
+                              "type": "integer",
+                              "example": 15
+                            },
+                            "emFrota": {
+                              "type": "integer",
+                              "example": 85
+                            }
+                          }
                         }
                       }
                     }
@@ -2716,12 +2953,12 @@
         ]
       }
     },
-    "/inoperative/": {
+    "/api/phases/": {
       "get": {
         "tags": [
-          "Inoperative"
+          "Maintenance Phases"
         ],
-        "summary": "Listar veículos inoperantes",
+        "summary": "Listar fases de manutenções",
         "description": "",
         "parameters": [
           {
@@ -2748,10 +2985,28 @@
           {
             "name": "status",
             "in": "query",
-            "description": "Filtrar por status (aprovado/concluido)",
+            "description": "Filtrar por status da manutenção (aprovado/concluido)",
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "tipoFase",
+            "in": "query",
+            "description": "Filtrar por tipo de fase",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ativo",
+            "in": "query",
+            "description": "Filtrar por fases ativas (true/false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           },
           {
@@ -2785,12 +3040,12 @@
         ]
       }
     },
-    "/inoperative/inoperative": {
+    "/api/phases/active": {
       "get": {
         "tags": [
-          "Inoperative"
+          "Maintenance Phases"
         ],
-        "summary": "Listar veículos inoperantes",
+        "summary": "Listar fases de manutenções",
         "description": "",
         "parameters": [
           {
@@ -2817,10 +3072,28 @@
           {
             "name": "status",
             "in": "query",
-            "description": "Filtrar por status (aprovado/concluido)",
+            "description": "Filtrar por status da manutenção (aprovado/concluido)",
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "tipoFase",
+            "in": "query",
+            "description": "Filtrar por tipo de fase",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ativo",
+            "in": "query",
+            "description": "Filtrar por fases ativas (true/false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           },
           {
@@ -2854,12 +3127,12 @@
         ]
       }
     },
-    "/inoperative/completed": {
+    "/api/phases/iniciar-viagem": {
       "get": {
         "tags": [
-          "Inoperative"
+          "Maintenance Phases"
         ],
-        "summary": "Listar veículos inoperantes",
+        "summary": "Listar fases de manutenções",
         "description": "",
         "parameters": [
           {
@@ -2886,10 +3159,28 @@
           {
             "name": "status",
             "in": "query",
-            "description": "Filtrar por status (aprovado/concluido)",
+            "description": "Filtrar por status da manutenção (aprovado/concluido)",
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "tipoFase",
+            "in": "query",
+            "description": "Filtrar por tipo de fase",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ativo",
+            "in": "query",
+            "description": "Filtrar por fases ativas (true/false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           },
           {
@@ -2923,22 +3214,544 @@
         ]
       }
     },
-    "/inoperative/{id}/phase": {
+    "/api/phases/deixar-veiculo": {
       "get": {
         "tags": [
-          "Inoperative"
+          "Maintenance Phases"
         ],
-        "summary": "Obter informações da fase atual do veículo inoperante",
+        "summary": "Listar fases de manutenções",
         "description": "",
         "parameters": [
           {
-            "name": "id",
+            "name": "_order",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filtrar por status da manutenção (aprovado/concluido)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tipoFase",
+            "in": "query",
+            "description": "Filtrar por tipo de fase",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ativo",
+            "in": "query",
+            "description": "Filtrar por fases ativas (true/false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "_page",
+            "in": "query",
+            "description": "Número da página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "_limit",
+            "in": "query",
+            "description": "Limite de itens por página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/phases/servico-finalizado": {
+      "get": {
+        "tags": [
+          "Maintenance Phases"
+        ],
+        "summary": "Listar fases de manutenções",
+        "description": "",
+        "parameters": [
+          {
+            "name": "_order",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filtrar por status da manutenção (aprovado/concluido)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tipoFase",
+            "in": "query",
+            "description": "Filtrar por tipo de fase",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ativo",
+            "in": "query",
+            "description": "Filtrar por fases ativas (true/false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "_page",
+            "in": "query",
+            "description": "Número da página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "_limit",
+            "in": "query",
+            "description": "Limite de itens por página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/phases/retorno-veiculo": {
+      "get": {
+        "tags": [
+          "Maintenance Phases"
+        ],
+        "summary": "Listar fases de manutenções",
+        "description": "",
+        "parameters": [
+          {
+            "name": "_order",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filtrar por status da manutenção (aprovado/concluido)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tipoFase",
+            "in": "query",
+            "description": "Filtrar por tipo de fase",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ativo",
+            "in": "query",
+            "description": "Filtrar por fases ativas (true/false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "_page",
+            "in": "query",
+            "description": "Número da página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "_limit",
+            "in": "query",
+            "description": "Limite de itens por página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/phases/veiculo-entregue": {
+      "get": {
+        "tags": [
+          "Maintenance Phases"
+        ],
+        "summary": "Listar fases de manutenções",
+        "description": "",
+        "parameters": [
+          {
+            "name": "_order",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filtrar por status da manutenção (aprovado/concluido)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tipoFase",
+            "in": "query",
+            "description": "Filtrar por tipo de fase",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ativo",
+            "in": "query",
+            "description": "Filtrar por fases ativas (true/false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "_page",
+            "in": "query",
+            "description": "Número da página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "_limit",
+            "in": "query",
+            "description": "Limite de itens por página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/phases/approved": {
+      "get": {
+        "tags": [
+          "Maintenance Phases"
+        ],
+        "summary": "Listar fases de manutenções",
+        "description": "",
+        "parameters": [
+          {
+            "name": "_order",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filtrar por status da manutenção (aprovado/concluido)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tipoFase",
+            "in": "query",
+            "description": "Filtrar por tipo de fase",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ativo",
+            "in": "query",
+            "description": "Filtrar por fases ativas (true/false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "_page",
+            "in": "query",
+            "description": "Número da página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "_limit",
+            "in": "query",
+            "description": "Limite de itens por página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/phases/completed": {
+      "get": {
+        "tags": [
+          "Maintenance Phases"
+        ],
+        "summary": "Listar fases de manutenções",
+        "description": "",
+        "parameters": [
+          {
+            "name": "_order",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filtrar por status da manutenção (aprovado/concluido)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tipoFase",
+            "in": "query",
+            "description": "Filtrar por tipo de fase",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ativo",
+            "in": "query",
+            "description": "Filtrar por fases ativas (true/false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "_page",
+            "in": "query",
+            "description": "Número da página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "_limit",
+            "in": "query",
+            "description": "Limite de itens por página",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/phases/maintenance/{manutencaoId}": {
+      "get": {
+        "tags": [
+          "Maintenance Phases"
+        ],
+        "summary": "Obter todas as fases de uma manutenção",
+        "description": "",
+        "parameters": [
+          {
+            "name": "manutencaoId",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string"
             },
-            "description": "ID do veículo inoperante"
+            "description": "ID da manutenção"
           },
           {
             "name": "_page",
@@ -2971,119 +3784,13 @@
         ],
         "responses": {
           "200": {
-            "description": "Informações da fase",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "number",
-                      "example": 1
-                    },
-                    "faseAtual": {
-                      "type": "string",
-                      "example": "FASE1"
-                    },
-                    "updatedAt": {
-                      "type": "string",
-                      "example": "2024-03-20T10:00:00Z"
-                    },
-                    "veiculo": {
-                      "type": "object",
-                      "properties": {
-                        "placa": {
-                          "type": "string",
-                          "example": "ABC1234"
-                        },
-                        "marca": {
-                          "type": "string",
-                          "example": "Toyota"
-                        },
-                        "modelo": {
-                          "type": "string",
-                          "example": "Corolla"
-                        }
-                      }
-                    },
-                    "responsavel": {
-                      "type": "object",
-                      "properties": {
-                        "nome": {
-                          "type": "string",
-                          "example": "João Silva"
-                        },
-                        "funcao": {
-                          "type": "string",
-                          "example": "supervisor"
-                        }
-                      }
-                    }
-                  },
-                  "xml": {
-                    "name": "main"
-                  }
-                }
-              },
-              "application/xml": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "number",
-                      "example": 1
-                    },
-                    "faseAtual": {
-                      "type": "string",
-                      "example": "FASE1"
-                    },
-                    "updatedAt": {
-                      "type": "string",
-                      "example": "2024-03-20T10:00:00Z"
-                    },
-                    "veiculo": {
-                      "type": "object",
-                      "properties": {
-                        "placa": {
-                          "type": "string",
-                          "example": "ABC1234"
-                        },
-                        "marca": {
-                          "type": "string",
-                          "example": "Toyota"
-                        },
-                        "modelo": {
-                          "type": "string",
-                          "example": "Corolla"
-                        }
-                      }
-                    },
-                    "responsavel": {
-                      "type": "object",
-                      "properties": {
-                        "nome": {
-                          "type": "string",
-                          "example": "João Silva"
-                        },
-                        "funcao": {
-                          "type": "string",
-                          "example": "supervisor"
-                        }
-                      }
-                    }
-                  },
-                  "xml": {
-                    "name": "main"
-                  }
-                }
-              }
-            }
+            "description": "Fases da manutenção"
           },
           "403": {
             "description": "Acesso proibido"
           },
           "404": {
-            "description": "Veículo inoperante não encontrado"
+            "description": "Manutenção não encontrada"
           }
         },
         "security": [
@@ -3091,22 +3798,23 @@
             "BearerAuth": []
           }
         ]
-      },
-      "put": {
+      }
+    },
+    "/api/phases/maintenance/{manutencaoId}/phase": {
+      "post": {
         "tags": [
-          "Inoperative"
+          "Maintenance Phases"
         ],
-        "summary": "Atualizar fase do veículo inoperante",
+        "summary": "Criar nova fase de manutenção",
         "description": "",
         "parameters": [
           {
-            "name": "id",
+            "name": "manutencaoId",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string"
-            },
-            "description": "ID do veículo inoperante"
+            }
           },
           {
             "name": "_page",
@@ -3138,123 +3846,8 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Fase atualizada com sucesso",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "number",
-                      "example": 1
-                    },
-                    "faseAtual": {
-                      "type": "string",
-                      "example": "FASE1"
-                    },
-                    "updatedAt": {
-                      "type": "string",
-                      "example": "2024-03-20T10:00:00Z"
-                    },
-                    "veiculo": {
-                      "type": "object",
-                      "properties": {
-                        "placa": {
-                          "type": "string",
-                          "example": "ABC1234"
-                        },
-                        "marca": {
-                          "type": "string",
-                          "example": "Toyota"
-                        },
-                        "modelo": {
-                          "type": "string",
-                          "example": "Corolla"
-                        }
-                      }
-                    },
-                    "responsavel": {
-                      "type": "object",
-                      "properties": {
-                        "nome": {
-                          "type": "string",
-                          "example": "João Silva"
-                        },
-                        "funcao": {
-                          "type": "string",
-                          "example": "supervisor"
-                        }
-                      }
-                    }
-                  },
-                  "xml": {
-                    "name": "main"
-                  }
-                }
-              },
-              "application/xml": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "number",
-                      "example": 1
-                    },
-                    "faseAtual": {
-                      "type": "string",
-                      "example": "FASE1"
-                    },
-                    "updatedAt": {
-                      "type": "string",
-                      "example": "2024-03-20T10:00:00Z"
-                    },
-                    "veiculo": {
-                      "type": "object",
-                      "properties": {
-                        "placa": {
-                          "type": "string",
-                          "example": "ABC1234"
-                        },
-                        "marca": {
-                          "type": "string",
-                          "example": "Toyota"
-                        },
-                        "modelo": {
-                          "type": "string",
-                          "example": "Corolla"
-                        }
-                      }
-                    },
-                    "responsavel": {
-                      "type": "object",
-                      "properties": {
-                        "nome": {
-                          "type": "string",
-                          "example": "João Silva"
-                        },
-                        "funcao": {
-                          "type": "string",
-                          "example": "supervisor"
-                        }
-                      }
-                    }
-                  },
-                  "xml": {
-                    "name": "main"
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Fase inválida"
-          },
-          "403": {
-            "description": "Acesso proibido ou sem permissão para atualizar"
-          },
-          "404": {
-            "description": "Veículo inoperante não encontrado"
+          "default": {
+            "description": ""
           }
         },
         "security": [
@@ -3279,8 +3872,86 @@
                   },
                   "schema": {
                     "example": "any"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/phases/maintenance/{manutencaoId}/advance": {
+      "post": {
+        "tags": [
+          "Maintenance Phases"
+        ],
+        "summary": "Avançar para próxima fase da manutenção ou finalizar última fase",
+        "description": "",
+        "parameters": [
+          {
+            "name": "manutencaoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID da manutenção"
+          },
+          {
+            "name": "_page",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_order",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "in": {
+                    "example": "any"
                   },
-                  "responsavel": {
+                  "description": {
+                    "example": "any"
+                  },
+                  "required": {
+                    "example": "any"
+                  },
+                  "schema": {
                     "example": "any"
                   }
                 }
@@ -3290,12 +3961,12 @@
         }
       }
     },
-    "/inoperative/{id}": {
+    "/api/phases/{id}": {
       "get": {
         "tags": [
-          "Inoperative"
+          "Maintenance Phases"
         ],
-        "summary": "Obter veículo inoperante por ID",
+        "summary": "Obter fase de manutenção por ID",
         "description": "",
         "parameters": [
           {
@@ -3305,7 +3976,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "ID do veículo inoperante"
+            "description": "ID da fase de manutenção"
           },
           {
             "name": "_page",
@@ -3338,13 +4009,13 @@
         ],
         "responses": {
           "200": {
-            "description": "Detalhes do veículo inoperante"
+            "description": "Detalhes da fase de manutenção"
           },
           "403": {
             "description": "Acesso proibido"
           },
           "404": {
-            "description": "Veículo inoperante não encontrado"
+            "description": "Fase de manutenção não encontrada"
           }
         },
         "security": [
@@ -3352,6 +4023,85 @@
             "BearerAuth": []
           }
         ]
+      },
+      "put": {
+        "tags": [
+          "Maintenance Phases"
+        ],
+        "summary": "Atualizar fase de manutenção",
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID da fase de manutenção"
+          },
+          {
+            "name": "_page",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_order",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "in": {
+                    "example": "any"
+                  },
+                  "description": {
+                    "example": "any"
+                  },
+                  "required": {
+                    "example": "any"
+                  },
+                  "schema": {
+                    "example": "any"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/products/search/": {

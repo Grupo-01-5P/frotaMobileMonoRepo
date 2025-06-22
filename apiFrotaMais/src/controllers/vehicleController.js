@@ -3,7 +3,7 @@ import prisma from "../config/database.js";
 export const list = async (req, res, next) => {
     /*
       #swagger.tags = ["Veiculos"]
-      #swagger.summary = "List all vehicles"
+      #swagger.summary = "List all vehicles with maintenance status"
       #swagger.security = [{ "BearerAuth": [] }]
       #swagger.parameters['_limit'] = {
         in: 'query',
@@ -25,8 +25,15 @@ export const list = async (req, res, next) => {
         type: 'string',
         enum: ['asc', 'desc']
       }
+      #swagger.parameters['status'] = {
+        in: 'query',
+        description: 'Filter by maintenance status (em_manutencao or em_frota)',
+        required: false,
+        type: 'string',
+        enum: ['em_manutencao', 'em_frota']
+      }
       #swagger.responses[200] = {
-        description: "List of vehicles with pagination",
+        description: "List of vehicles with maintenance status and pagination",
         content: {
           "application/json": {
             schema: {
@@ -44,6 +51,26 @@ export const list = async (req, res, next) => {
                       anoFabricacao: { type: "integer", example: 2020 },
                       anoModelo: { type: "integer", example: 2021 },
                       cor: { type: "string", example: "Prata" },
+                      statusManutencao: { type: "string", example: "Em frota", enum: ["Em manutenção", "Em frota"] },
+                      manutencaoAtiva: {
+                        type: "object",
+                        nullable: true,
+                        properties: {
+                          id: { type: "integer", example: 15 },
+                          status: { type: "string", example: "aprovada" },
+                          dataSolicitacao: { type: "string", format: "date-time" },
+                          descricaoProblema: { type: "string", example: "Problema no motor" },
+                          faseAtual: {
+                            type: "object",
+                            nullable: true,
+                            properties: {
+                              tipoFase: { type: "string", example: "SERVICO_FINALIZADO" },
+                              descricaoFase: { type: "string", example: "Serviço finalizado" },
+                              emAndamento: { type: "boolean", example: true }
+                            }
+                          }
+                        }
+                      },
                       supervisor: {
                         type: "object",
                         properties: {
@@ -63,7 +90,14 @@ export const list = async (req, res, next) => {
                     totalPages: { type: "integer", example: 10 },
                     itemsPerPage: { type: "integer", example: 10 },
                     hasNextPage: { type: "boolean", example: true },
-                    hasPrevPage: { type: "boolean", example: false }
+                    hasPrevPage: { type: "boolean", example: false },
+                    statusCount: {
+                      type: "object",
+                      properties: {
+                        emManutencao: { type: "integer", example: 15 },
+                        emFrota: { type: "integer", example: 85 }
+                      }
+                    }
                   }
                 }
               }
@@ -83,19 +117,9 @@ export const list = async (req, res, next) => {
         const limit = parseInt(req.query._limit) || 10;
         const offset = (page - 1) * limit;
 
-        const totalItems = await prisma.veiculo.count();
-        const totalPages = Math.ceil(totalItems / limit);
-
-        const order = req.query._order?.toLowerCase() === "desc" ? "desc" : "asc";
-        const sort = req.query._sort;
-        const validSortFields = ["id", "placa", "marca", "modelo", "anoFabricacao", "anoModelo"];
-        const orderBy = validSortFields.includes(sort) ? { [sort]: order } : undefined;
-
-        const veiculos = await prisma.veiculo.findMany({
+        // Primeiro, buscar todos os veículos com suas manutenções ativas
+        const veiculosComManutencao = await prisma.veiculo.findMany({
             where: whereClause,
-            skip: offset,
-            take: limit,
-            ...(orderBy && { orderBy }),
             include: {
                 supervisor: {
                     select: {
@@ -103,12 +127,113 @@ export const list = async (req, res, next) => {
                         nome: true,
                         email: true
                     }
+                },
+                manutencoes: {
+                    where: {
+                        status: {
+                            in: ['aprovada', 'Em analise'] // Manutenções ativas
+                        }
+                    },
+                    orderBy: {
+                        dataSolicitacao: 'desc'
+                    },
+                    take: 1, // Pegar apenas a manutenção mais recente
+                    include: {
+                        fases: {
+                            where: {
+                                ativo: true
+                            },
+                            orderBy: {
+                                dataInicio: 'desc'
+                            },
+                            take: 1
+                        },
+                        oficina: {
+                            select: {
+                                id: true,
+                                nome: true
+                            }
+                        }
+                    }
                 }
             }
         });
 
+        // Processar os dados para incluir status de manutenção
+        const veiculosProcessados = veiculosComManutencao.map(veiculo => {
+            const manutencaoAtiva = veiculo.manutencoes.length > 0 ? veiculo.manutencoes[0] : null;
+            const faseAtual = manutencaoAtiva?.fases.length > 0 ? manutencaoAtiva.fases[0] : null;
+            
+            const statusManutencao = manutencaoAtiva ? 'Em manutenção' : 'Em frota';
+            
+            return {
+                ...veiculo,
+                statusManutencao,
+                manutencaoAtiva: manutencaoAtiva ? {
+                    id: manutencaoAtiva.id,
+                    status: manutencaoAtiva.status,
+                    dataSolicitacao: manutencaoAtiva.dataSolicitacao,
+                    descricaoProblema: manutencaoAtiva.descricaoProblema,
+                    urgencia: manutencaoAtiva.urgencia,
+                    oficina: manutencaoAtiva.oficina,
+                    faseAtual: faseAtual ? {
+                        id: faseAtual.id,
+                        tipoFase: faseAtual.tipoFase,
+                        descricaoFase: getFaseDescription(faseAtual.tipoFase),
+                        dataInicio: faseAtual.dataInicio,
+                        dataFim: faseAtual.dataFim,
+                        emAndamento: !faseAtual.dataFim,
+                        observacoes: faseAtual.observacoes
+                    } : null
+                } : null,
+                // Remover o array de manutenções para não sobrecarregar a resposta
+                manutencoes: undefined
+            };
+        });
+
+        // Aplicar filtro de status se fornecido
+        let veiculosFiltrados = veiculosProcessados;
+        if (req.query.status) {
+            const statusFiltro = req.query.status === 'em_manutencao' ? 'Em manutenção' : 'Em frota';
+            veiculosFiltrados = veiculosProcessados.filter(v => v.statusManutencao === statusFiltro);
+        }
+
+        // Aplicar ordenação se especificada
+        const order = req.query._order?.toLowerCase() === "desc" ? "desc" : "asc";
+        const sort = req.query._sort;
+        const validSortFields = ["id", "placa", "marca", "modelo", "anoFabricacao", "anoModelo"];
+        
+        if (validSortFields.includes(sort)) {
+            veiculosFiltrados.sort((a, b) => {
+                let aVal = a[sort];
+                let bVal = b[sort];
+                
+                if (typeof aVal === 'string') {
+                    aVal = aVal.toLowerCase();
+                    bVal = bVal.toLowerCase();
+                }
+                
+                if (order === 'desc') {
+                    return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+                } else {
+                    return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+                }
+            });
+        }
+
+        // Aplicar paginação
+        const totalItems = veiculosFiltrados.length;
+        const totalPages = Math.ceil(totalItems / limit);
+        const veiculosPaginados = veiculosFiltrados.slice(offset, offset + limit);
+
+        // Calcular estatísticas de status
+        const statusCount = {
+            emManutencao: veiculosProcessados.filter(v => v.statusManutencao === 'Em manutenção').length,
+            emFrota: veiculosProcessados.filter(v => v.statusManutencao === 'Em frota').length
+        };
+
         return res.ok({
-            data: veiculos,
+            data: veiculosPaginados,
             meta: {
                 totalItems,
                 currentPage: page,
@@ -116,12 +241,26 @@ export const list = async (req, res, next) => {
                 itemsPerPage: limit,
                 hasNextPage: page < totalPages,
                 hasPrevPage: page > 1,
+                statusCount
             }
         });
     } catch (error) {
         return next(error);
     }
 };
+
+// Função auxiliar para obter descrição amigável das fases
+function getFaseDescription(tipoFase) {
+    const faseDescriptions = {
+        'INICIAR_VIAGEM': 'Iniciando viagem até a mecânica',
+        'DEIXAR_VEICULO': 'Deixando veículo para manutenção',
+        'SERVICO_FINALIZADO': 'Serviço finalizado',
+        'RETORNO_VEICULO': 'Retornando com veículo',
+        'VEICULO_ENTREGUE': 'Veículo entregue/finalizado'
+    };
+    
+    return faseDescriptions[tipoFase] || tipoFase;
+}
 
 export const getById = async (req, res, next) => {
     /*

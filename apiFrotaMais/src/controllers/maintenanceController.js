@@ -10,18 +10,26 @@ export const list = async (req, res, next) => {
   try {
     const whereClause = {};
     if (req.query.status) {
-      whereClause.status = req.query.status;
+      //caso o status seja aprovado considera manutencoes em analise tambem
+      if (req.query.status === 'aprovada') {
+        whereClause.status = {
+          in: ['aprovada', 'Em analise']
+        }
+      } else {
+        whereClause.status = req.query.status;
+      }
     }
     
     if (req.payload && req.payload.funcao === 'supervisor') {
       // Se for supervisor, filtra apenas as manutenções vinculadas a ele
       whereClause.supervisorId = req.payload.id;
     }
+    
     const page = parseInt(req.query._page) || 1;
     const limit = parseInt(req.query._limit) || 10;
     const offset = (page - 1) * limit;
 
-    const totalItems = await prisma.manutencao.count();
+    const totalItems = await prisma.manutencao.count({ where: whereClause });
     const totalPages = Math.ceil(totalItems / limit);
 
     const order = req.query._order?.toLowerCase() === "desc" ? "desc" : "asc";
@@ -40,14 +48,68 @@ export const list = async (req, res, next) => {
           select: { id: true, nome: true, email: true }
         },
         oficina: true,
+        fases: {
+          where: {
+            ativo: true
+          },
+          orderBy: {
+            dataInicio: 'desc'
+          },
+          take: 1, // Pega apenas a fase mais recente ativa
+          include: {
+            responsavel: {
+              select: { id: true, nome: true }
+            },
+            oficina: {
+              select: { id: true, nome: true }
+            }
+          }
+        }
       }
     });
 
-    return res.ok(res.hateos_list("manutencoes", manutencoes, totalPages));
+    // Processar os dados para incluir informações da fase atual
+    const manutencoesComFase = manutencoes.map(manutencao => {
+      const faseAtual = manutencao.fases.length > 0 ? manutencao.fases[0] : null;
+      
+      return {
+        ...manutencao,
+        faseAtual: faseAtual ? {
+          id: faseAtual.id,
+          tipoFase: faseAtual.tipoFase,
+          dataInicio: faseAtual.dataInicio,
+          dataFim: faseAtual.dataFim,
+          observacoes: faseAtual.observacoes,
+          responsavel: faseAtual.responsavel,
+          oficina: faseAtual.oficina,
+          // Adicionar descrição amigável da fase
+          descricaoFase: getFaseDescription(faseAtual.tipoFase),
+          // Verificar se a fase está em andamento ou finalizada
+          emAndamento: !faseAtual.dataFim
+        } : null,
+        // Remover o array de fases para não sobrecarregar a resposta
+        fases: undefined
+      };
+    });
+
+    return res.ok(res.hateos_list("manutencoes", manutencoesComFase, totalPages));
   } catch (error) {
     return next(error);
   }
 };
+
+// Função auxiliar para obter descrição amigável das fases
+function getFaseDescription(tipoFase) {
+  const faseDescriptions = {
+    'INICIAR_VIAGEM': 'Iniciando viagem até a mecânica',
+    'DEIXAR_VEICULO': 'Deixando veículo para manutenção',
+    'SERVICO_FINALIZADO': 'Serviço finalizado',
+    'RETORNO_VEICULO': 'Retornando com veículo',
+    'VEICULO_ENTREGUE': 'Veículo entregue/finalizado'
+  };
+  
+  return faseDescriptions[tipoFase] || tipoFase;
+}
 
 export const getById = async (req, res, next) => {
   /*
