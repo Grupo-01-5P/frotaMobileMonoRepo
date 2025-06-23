@@ -1,6 +1,8 @@
 import prisma from "../config/database.js";
 import { hashPassword } from "../utils/bcrypt.js";
 import bcrypt from "bcrypt";
+import jwt from 'jsonwebtoken';
+import publishEmail from "../services/publish.js";
 
 export const listMaintenancePhases = async (req, res, next) => {
   /*
@@ -700,9 +702,23 @@ export const advanceToNextPhase = async (req, res, next) => {
           select: {
             id: true,
             supervisorId: true,
-            status: true
+            status: true,
+            veiculo: {
+              select: {
+                placa: true,
+                marca: true,
+                modelo: true,
+              }
+            },
+            oficina: {
+              select: {
+                id: true,
+                nome: true,
+                email: true
+              }
+            }
           }
-        }
+        },
       }
     });
 
@@ -831,7 +847,9 @@ export const advanceToNextPhase = async (req, res, next) => {
         },
         oficina: {
           select: {
+            id:true,
             nome: true,
+            email: true
           }
         },
         responsavel: {
@@ -842,7 +860,77 @@ export const advanceToNextPhase = async (req, res, next) => {
         }
       }
     });
+    console.log(currentPhase.manutencao.oficina)
+    console.log(`Fase atual '${currentPhase.tipoFase}'`);
+    // console.log(`Fase atual '${currentPhase.tipoFase}' finalizada com sucesso.`);
+    // console.log(`Oficina ID: ${currentPhase.oficinaId}, email: '${currentPhase.oficina.email}'`);
 
+   if (currentPhase.tipoFase === 'DEIXAR_VEICULO' && currentPhase.manutencao.oficina?.email) {
+    console.log(`enviando email para oficina: ${currentPhase.manutencao.oficina.email}`);
+      try {
+
+        // Gerar token JWT com validade de 2 dias
+        const tokenPayload = {
+          manutencaoId: parseInt(manutencaoId),
+          oficinaId: currentPhase.manutencao.oficina.id,
+          purpose: 'orcamento_manutencao'
+        };
+
+        const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
+              expiresIn: "1d",
+            });
+        
+        // URL do frontend (pode vir de variável de ambiente)
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const orcamentoLink = `${frontendUrl}/?manutencaoid=${manutencaoId}&oficinaid=${currentPhase.manutencao.oficina.id}&token=${token}`;
+        console.log(`Link de orçamento: ${orcamentoLink}`);
+        await publishEmail({
+          to: currentPhase.manutencao.oficina.email,
+          subject: `Veículo Entregue para Manutenção - ${currentPhase.manutencao.veiculo.placa}`,
+          body: `
+Prezados,
+
+O veículo foi entregue em sua oficina e está aguardando orçamento para manutenção.
+
+📋 **Detalhes da Manutenção:**
+- ID da Manutenção: #${manutencaoId}
+- Veículo: ${currentPhase.manutencao.veiculo.marca} ${currentPhase.manutencao.veiculo.modelo}
+- Placa: ${currentPhase.manutencao.veiculo.placa}
+- Oficina: ${currentPhase.manutencao.oficina.nome}
+- Data de Entrega: ${new Date().toLocaleString('pt-BR')}
+
+🔗 **Criar Orçamento:**
+Para criar o orçamento desta manutenção, acesse o link abaixo:
+
+${orcamentoLink}
+
+⚠️ **Importante:**
+- Este link é válido por **2 dias** (até ${new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('pt-BR')})
+- Após este prazo, será necessário solicitar um novo link
+- Use este formulário para cadastrar todas as peças e serviços necessários
+
+📞 **Dúvidas?**
+Em caso de dúvidas, entre em contato com nossa equipe.
+
+Atenciosamente,
+Sistema de Manutenção de Veículos
+          `.trim(),
+          metadata: {
+            maintenanceId: parseInt(manutencaoId),
+            oficinaId: currentPhase.manutencao.oficina.id,
+            tokenExpiry: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+            linkGenerated: true
+          }
+        });
+
+        console.log(`Email de orçamento enviado para oficina: ${currentPhase.manutencao.oficina.email}`);
+        console.log(`Link gerado: ${orcamentoLink}`);
+        
+      } catch (emailError) {
+        console.error('Erro ao enviar email para oficina:', emailError.message);
+        // Não falha a operação, apenas loga o erro
+      }
+    }
     return res.ok({
       message: `Fase '${currentPhase.tipoFase}' finalizada e '${proximaFase}' iniciada com sucesso.`,
       data: nextPhase,

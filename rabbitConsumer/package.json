@@ -1,0 +1,15 @@
+{
+  "name": "node-boilerplate",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/consumer",
+    "start:watch": "node --watch src/consumer"
+  },
+  "dependencies": {
+    "@sendgrid/mail": "^8.1.5",
+    "amqplib": "0.10.7",
+    "colors": "^1.4.0",
+    "dotenv": "16.4.7"
+  }
+}

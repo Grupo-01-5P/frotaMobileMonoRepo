@@ -73,6 +73,23 @@ services:
       - "prometheus.io/port=4040"
       - "prometheus.io/path=/metrics"
 
+  formulario-orcamento:
+    build:
+      context: ./FormularioOrcamento
+      dockerfile: Dockerfile
+    container_name: formulario-orcamento-frotamais
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_BASE_URL: http://localhost:4040
+      NODE_ENV: production
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - api-frotamaismobile
+
+      
   # Prometheus
   prometheus:
     image: prom/prometheus:latest
@@ -174,6 +191,23 @@ services:
     restart: unless-stopped
     ports:
       - "9419:9419"
+    environment:
+      RABBIT_URL: "http://rabbitmq:15672"
+      RABBIT_USER: admin
+      RABBIT_PASSWORD: admin123
+    networks:
+      - app-network
+      - monitoring
+    depends_on:
+      - rabbitmq
+
+
+  rabbitmq-consumer-notifications:
+    build:
+      context: ./rabbitConsumer
+      dockerfile: Dockerfile
+    container_name: rabbitmq-consumer-notifications-frotamais
+    restart: unless-stopped
     environment:
       RABBIT_URL: "http://rabbitmq:15672"
       RABBIT_USER: admin

@@ -656,7 +656,7 @@ export const getAvailable = async (req, res, next) => {
                       status: {
                           // This finds any maintenance where the status is NOT 'reprovada' AND NOT 'concluída'
                           // In other words, it finds 'pendente', 'em andamento', etc.
-                          notIn: ["reprovada", "concluída"]
+                          notIn: ["Reprovada", "concluida"]
                       }
                   }
               }

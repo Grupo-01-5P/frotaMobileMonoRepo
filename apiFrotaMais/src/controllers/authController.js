@@ -32,7 +32,6 @@ export const verify = async (req, res, next) => {
   if (authHeader) {
     const token = authHeader.split(" ")[1];
     const JWTSECRET = process.env.JWT_SECRET;
-
     try {
       const payload = jsonwebtoken.verify(token, JWTSECRET);
       req.payload = payload;
