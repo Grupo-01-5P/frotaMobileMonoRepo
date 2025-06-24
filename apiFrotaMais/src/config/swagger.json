@@ -409,6 +409,9 @@
           "204": {
             "description": "Removido com sucesso"
           },
+          "400": {
+            "description": "Bad Request"
+          },
           "404": {
             "description": "Orçamento não encontrado"
           }
@@ -417,7 +420,30 @@
           {
             "BearerAuth": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reciveNewBudget": {
+                    "type": "boolean",
+                    "description": "Se true, enviará novo link para criar orçamento"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Motivo da reprovação do orçamento"
+                  }
+                },
+                "required": [
+                  "description"
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "/api/budgets/{orcamentoId}/produtos": {

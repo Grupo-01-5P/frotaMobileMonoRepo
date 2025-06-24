@@ -1,4 +1,6 @@
 import prisma from "../config/database.js";
+import publishEmail from "../services/publish.js";
+import jwt from 'jsonwebtoken';
 
 export const list = async (req, res, next) => {
   /*
@@ -247,11 +249,28 @@ export const update = async (req, res, next) => {
     const { produtos, dataEnvio, ...restOfBody } = req.body;
 
     // Verificar se o orçamento existe
-    const existingOrcamento = await prisma.orcamento.findUnique({ where: { id } });
+    const existingOrcamento = await prisma.orcamento.findUnique({ 
+      where: { id },
+      include: {
+        manutencao: { 
+          include: { 
+            veiculo: true,
+            oficina: true
+          }
+        },
+        oficina: true,
+        produtos: { 
+          include: { 
+            produto: true 
+          } 
+        },
+      },
+    });
+    
     if (!existingOrcamento) {
       return res.status(404).json({ error: "Orçamento não encontrado." });
     }
-
+    
     const updatedOrcamento = await prisma.$transaction(async (tx) => {
       // 1. Atualizar os campos escalares do Orcamento
       await tx.orcamento.update({
@@ -286,12 +305,105 @@ export const update = async (req, res, next) => {
       return tx.orcamento.findUnique({
         where: { id },
         include: {
-          manutencao: { include: { veiculo: true } },
+          manutencao: { 
+            include: { 
+              veiculo: true,
+              oficina: true
+            } 
+          },
           oficina: true,
-          produtos: { include: { produto: true } },
+          produtos: { 
+            include: { 
+              produto: true 
+            } 
+          },
         },
       });
     });
+
+    // Enviar email quando o status for alterado para "aprovado"
+    if (restOfBody.status && restOfBody.status.toLowerCase() === "aprovado") {
+      try {
+        // Calcular valor total do orçamento
+        const valorMaoObra = updatedOrcamento.valorMaoObra || 0;
+        const valorProdutos = updatedOrcamento.produtos.reduce((total, produto) => {
+          return total + (produto.valorUnitario * (produto.quantidade || 1));
+        }, 0);
+        const valorTotal = valorMaoObra + valorProdutos;
+
+        // Gerar lista de produtos para o email
+        const listaProdutos = updatedOrcamento.produtos.length > 0 
+          ? updatedOrcamento.produtos.map(produto => 
+              `• ${produto.produto.nome} - Qtd: ${produto.quantidade || 1} - R$ ${produto.valorUnitario.toFixed(2)} (Fornecedor: ${produto.fornecedor})`
+            ).join('\n        ')
+          : '• Nenhum produto adicional';
+
+        await publishEmail({
+          to: updatedOrcamento.oficina.email,
+          subject: `✅ Orçamento APROVADO - Iniciar Serviço - ${updatedOrcamento.manutencao.veiculo.placa}`,
+          body: `
+Prezados,
+
+🎉 **ORÇAMENTO APROVADO!**
+
+O orçamento para manutenção foi aprovado e vocês estão autorizados a iniciar o serviço imediatamente.
+
+📋 **Detalhes da Manutenção:**
+- ID do Orçamento: #${updatedOrcamento.id}
+- ID da Manutenção: #${updatedOrcamento.manutencao.id}
+- Veículo: ${updatedOrcamento.manutencao.veiculo.marca} ${updatedOrcamento.manutencao.veiculo.modelo}
+- Placa: ${updatedOrcamento.manutencao.veiculo.placa}
+- Oficina: ${updatedOrcamento.oficina.nome}
+- Data de Aprovação: ${new Date().toLocaleString('pt-BR')}
+
+💰 **Valores Aprovados:**
+- Mão de Obra: R$ ${valorMaoObra.toFixed(2)}
+- Produtos: R$ ${valorProdutos.toFixed(2)}
+- **TOTAL: R$ ${valorTotal.toFixed(2)}**
+
+🔧 **Produtos/Peças Aprovados:**
+        ${listaProdutos}
+
+📋 **Descrição do Serviço:**
+${updatedOrcamento.descricaoServico || 'Não especificada'}
+
+✅ **Próximos Passos:**
+1. Iniciem o serviço conforme orçamento aprovado
+2. Utilizem apenas os produtos/peças especificados
+3. Mantenham a qualidade e prazos acordados
+4. Reportem qualquer imprevisto imediatamente
+
+⚠️ **Importante:**
+- Sigam exatamente o que foi orçado e aprovado
+- Qualquer alteração deve ser previamente autorizada
+- Documenten o progresso do serviço
+- Notifiquem quando o serviço estiver concluído
+
+📞 **Contato para Dúvidas:**
+Em caso de dúvidas ou imprevistos durante o serviço, entrem em contato com nossa equipe imediatamente.
+
+Confiamos na qualidade do trabalho de vocês. Bom serviço!
+
+Atenciosamente,
+Sistema de Manutenção de Veículos
+          `.trim(),
+          metadata: {
+            orcamentoId: updatedOrcamento.id,
+            maintenanceId: updatedOrcamento.manutencao.id,
+            oficinaId: updatedOrcamento.oficina.id,
+            status: 'aprovado',
+            valorTotal: valorTotal,
+            dataAprovacao: new Date().toISOString(),
+            emailType: 'orcamento_aprovado'
+          }
+        });
+
+        console.log(`Email de aprovação enviado para oficina: ${updatedOrcamento.oficina.email}`);
+      } catch (emailError) {
+        console.error('Erro ao enviar email de aprovação:', emailError);
+        // Não falhar a operação se o email falhar
+      }
+    }
 
     return res.ok(res.hateos_item(updatedOrcamento));
   } catch (error) {
@@ -312,22 +424,63 @@ export const remove = async (req, res, next) => {
     #swagger.tags = ["Orçamentos"]
     #swagger.summary = "Remove um orçamento"
     #swagger.security = [{ "BearerAuth": [] }]
+    #swagger.requestBody = {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            properties: {
+              reciveNewBudget: { 
+                type: "boolean", 
+                description: "Se true, enviará novo link para criar orçamento" 
+              },
+              description: { 
+                type: "string", 
+                description: "Motivo da reprovação do orçamento" 
+              }
+            },
+            required: ["description"]
+          }
+        }
+      }
+    }
     #swagger.responses[204] = { description: "Removido com sucesso" }
     #swagger.responses[404] = { description: "Orçamento não encontrado" }
   */
   try {
     const id = parseInt(req.params.id);
+    const { reciveNewBudget = false, description } = req.body;
 
-    // Buscar o orçamento para verificar se existe e obter dados necessários
+    // Validar se a descrição foi fornecida
+    if (!description || description.trim() === '') {
+      return res.status(400).json({ error: "Descrição do motivo da reprovação é obrigatória." });
+    }
+
+    // Buscar o orçamento com todas as informações necessárias
     const orcamento = await prisma.orcamento.findUnique({
       where: { id },
+      include: {
+        manutencao: { 
+          include: { 
+            veiculo: true,
+            oficina: true
+          } 
+        },
+        oficina: true,
+        produtos: { 
+          include: { 
+            produto: true 
+          } 
+        },
+      },
     });
 
     if (!orcamento) {
       return res.status(404).json({ error: "Orçamento não encontrado." });
     }
 
-    console.log("Removendo orçamento:", orcamento);
+    console.log("Removendo orçamento:", orcamento.id);
 
     // Executar todas as operações em uma única transação
     await prisma.$transaction(async (tx) => {
@@ -341,7 +494,7 @@ export const remove = async (req, res, next) => {
         where: { id },
       });
 
-      // 3. ✅ CORREÇÃO: Voltar status da manutenção para "pendente" se existir
+      // 3. Voltar status da manutenção para "aprovada" (aguardando novo orçamento)
       if (orcamento.manutencaoId) {
         await tx.manutencao.update({
           where: { id: orcamento.manutencaoId },
@@ -350,15 +503,145 @@ export const remove = async (req, res, next) => {
       }
     });
 
-    return res.status(204).send(); // ou res.no_content() se você tem esse método customizado
+    // 4. Enviar email de notificação sobre reprovação
+    try {
+      const manutencaoId = orcamento.manutencaoId;
+      // Calcular valores do orçamento reprovado para referência
+      const valorMaoObra = orcamento.valorMaoObra || 0;
+      const valorProdutos = orcamento.produtos.reduce((total, produto) => {
+        return total + (produto.valorUnitario * (produto.quantidade || 1));
+      }, 0);
+      const valorTotal = valorMaoObra + valorProdutos;
+
+      // Gerar lista de produtos do orçamento reprovado
+      const listaProdutos = orcamento.produtos.length > 0 
+        ? orcamento.produtos.map(produto => 
+            `• ${produto.produto.nome} - Qtd: ${produto.quantidade || 1} - R$ ${produto.valorUnitario.toFixed(2)}`
+          ).join('\n        ')
+        : '• Nenhum produto no orçamento';
+
+      // Gerar novo link de orçamento se solicitado
+      let novoOrcamentoLink = '';
+      let linkExpiry = null;
+      if (reciveNewBudget) {
+        // Gerar token JWT com validade de 2 dias
+        const tokenPayload = {
+          manutencaoId: parseInt(orcamento.manutencaoId),
+          oficinaId: orcamento.oficina.id,
+          purpose: 'orcamento_manutencao'
+        };
+
+        const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
+              expiresIn: "1d",
+            });
+        
+        // URL do frontend (pode vir de variável de ambiente)
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const orcamentoLink = `${frontendUrl}/?manutencaoid=${manutencaoId}&oficinaid=${orcamento.oficina.id}&token=${token}`;
+        novoOrcamentoLink = orcamentoLink
+      }
+
+      const emailSubject = reciveNewBudget 
+        ? `❌ Orçamento REPROVADO - Novo Orçamento Solicitado - ${orcamento.manutencao.veiculo.placa}`
+        : `❌ Orçamento REPROVADO - ${orcamento.manutencao.veiculo.placa}`;
+
+      const emailBody = `
+Prezados,
+
+❌ **ORÇAMENTO REPROVADO**
+
+Informamos que o orçamento enviado foi reprovado pela nossa equipe.
+
+📋 **Detalhes do Orçamento Reprovado:**
+- ID do Orçamento: #${orcamento.id}
+- ID da Manutenção: #${orcamento.manutencao.id}
+- Veículo: ${orcamento.manutencao.veiculo.marca} ${orcamento.manutencao.veiculo.modelo}
+- Placa: ${orcamento.manutencao.veiculo.placa}
+- Oficina: ${orcamento.oficina.nome}
+- Data da Reprovação: ${new Date().toLocaleString('pt-BR')}
+
+💰 **Valores do Orçamento Reprovado:**
+- Mão de Obra: R$ ${valorMaoObra.toFixed(2)}
+- Produtos: R$ ${valorProdutos.toFixed(2)}
+- **Total: R$ ${valorTotal.toFixed(2)}**
+
+🔧 **Produtos/Peças do Orçamento Reprovado:**
+        ${listaProdutos}
+
+📝 **Motivo da Reprovação:**
+${description.trim()}
+
+${reciveNewBudget ? `
+🔗 **NOVO ORÇAMENTO SOLICITADO:**
+Solicitamos que elaborem um novo orçamento considerando as observações acima.
+
+**Link para Novo Orçamento:**
+${novoOrcamentoLink}
+
+⚠️ **Importante sobre o novo orçamento:**
+- Este link é válido por **2 dias** (até ${linkExpiry?.toLocaleString('pt-BR')})
+- Considerem as observações mencionadas no motivo da reprovação
+- Elaborem um orçamento mais detalhado e adequado
+- Justifiquem os valores e escolhas de produtos/serviços
+
+📋 **Diretrizes para o Novo Orçamento:**
+- Revise os preços de mão de obra
+- Verifique se todos os produtos são necessários
+- Considere alternativas mais econômicas se possível
+- Detalhe melhor a descrição dos serviços
+- Inclua justificativas para itens de alto valor
+` : `
+⏸️ **Próximos Passos:**
+- Analisem o motivo da reprovação
+- Entrem em contato conosco para esclarecimentos se necessário
+- Aguardem novas instruções sobre como proceder
+
+📞 **Contato:**
+Para dúvidas sobre a reprovação ou esclarecimentos, entrem em contato com nossa equipe.
+`}
+
+Atenciosamente,
+Sistema de Manutenção de Veículos
+      `.trim();
+
+      await publishEmail({
+        to: orcamento.oficina.email,
+        subject: emailSubject,
+        body: emailBody,
+        metadata: {
+          orcamentoId: orcamento.id,
+          maintenanceId: orcamento.manutencao.id,
+          oficinaId: orcamento.oficina.id,
+          status: 'reprovado',
+          motivoReprovacao: description.trim(),
+          valorTotalReprovado: valorTotal,
+          dataReprovacao: new Date().toISOString(),
+          novoOrcamentoSolicitado: reciveNewBudget,
+          ...(reciveNewBudget && {
+            novoOrcamentoLink: novoOrcamentoLink,
+            linkExpiry: linkExpiry?.toISOString()
+          }),
+          emailType: 'orcamento_reprovado'
+        }
+      });
+
+      console.log(`Email de reprovação enviado para oficina: ${orcamento.oficina.email}`);
+      if (reciveNewBudget) {
+        console.log(`Novo link de orçamento gerado: ${novoOrcamentoLink}`);
+      }
+    } catch (emailError) {
+      console.error('Erro ao enviar email de reprovação:', emailError);
+      // Não falhar a operação se o email falhar, mas registrar o erro
+    }
+    
+    return res.status(204).send();
   } catch (error) {
     if (error.code === 'P2025') { 
-      // "Record to delete not found" - pode acontecer se o orçamento for deletado entre a verificação e a deleção
       return res.status(404).json({ error: "Orçamento não encontrado." });
     }
     
     console.error("Erro ao remover orçamento:", error);
-    return next(error); // Outros erros são passados para o manipulador de erros global
+    return next(error);
   }
 };
 
